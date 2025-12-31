@@ -1,0 +1,79 @@
+name: pihole-tailscaled
+
+networks:
+  pihole_net:
+    driver: bridge
+
+services:
+  tailscale-pihole:
+    image: tailscale/tailscale:latest
+    hostname: ts-pihole
+    restart: unless-stopped
+    environment:
+      - TS_AUTHKEY=tskey-auth-XXXXXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      # - TS_EXTRA_ARGS=--advertise-tags=tag:container
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+    volumes:
+      - ./tailscale/state:/var/lib/tailscale
+    networks:
+      - pihole_net
+    ports:
+      # DNS Ports
+      - "5353:53/tcp"
+      - "5353:53/udp"
+      # Web Interface Ports (matching internal Pi-hole ports for Tailscale userspace networking)
+      - "8080:8080/tcp"
+      - "8443:8443/tcp"
+    # devices:
+    #   - /dev/net/tun:/dev/net/tun
+    # cap_add:
+    #   - net_admin
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    restart: unless-stopped
+    network_mode: "service:tailscale-pihole"
+    depends_on:
+      - unbound
+    environment:
+      # Set the appropriate timezone for your location
+      # https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+      TZ: 'America/Sao_Paulo'
+      # Set a password to access the web interface
+      FTLCONF_webserver_api_password: 'your-secure-password'
+      # If using Docker's default bridge network, set listening mode to ALL
+      FTLCONF_dns_listeningMode: 'ALL'
+      # Use Unbound as upstream DNS (recursive resolver)
+      FTLCONF_dns_upstreams: 'unbound#5335'
+      # Configure Pi-hole web server to listen on non-privileged ports
+      # Required for Tailscale userspace networking to work correctly
+      FTLCONF_webserver_port: '8080o,[::]:8080o,8443os,[::]:8443os'
+    volumes:
+      # For persisting Pi-hole's databases and common configuration file
+      - ./pihole_data:/etc/pihole
+      # Uncomment for custom dnsmasq config files (optional)
+      # - ./etc-dnsmasq.d:/etc/dnsmasq.d
+    cap_add:
+      # Required if using Pi-hole as DHCP server
+      - NET_ADMIN
+      # Required if using Pi-hole as NTP client
+      - SYS_TIME
+      # Optional, for better processing priority
+      - SYS_NICE
+
+  unbound:
+    container_name: unbound
+    image: mvance/unbound:latest
+    restart: unless-stopped
+    networks:
+      - pihole_net
+    volumes:
+      - ./unbound:/opt/unbound/etc/unbound
+    healthcheck:
+      test: ["CMD", "drill", "@127.0.0.1", "-p", "5335", "cloudflare.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
