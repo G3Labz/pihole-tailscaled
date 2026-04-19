@@ -1,4 +1,3 @@
-pihole_data
 tailscale
-unbound
+*_data
 docker-compose.yml

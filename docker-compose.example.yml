@@ -70,7 +70,7 @@ services:
     networks:
       - pihole_net
     volumes:
-      - ./unbound:/opt/unbound/etc/unbound
+      - ./unbound_data:/opt/unbound/etc/unbound
     healthcheck:
       test: ["CMD", "drill", "@127.0.0.1", "-p", "5335", "cloudflare.com"]
       interval: 30s
